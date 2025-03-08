@@ -1,15 +1,11 @@
 
 #include "Arduino.h"
-
 #include "defines.h"
-
 #include "soc/soc.h"           // Disable brownour problems
 #include "soc/rtc_cntl_reg.h"  // Disable brownour problems
-
 #include "esp_camera.h"        // Include Camera library
 #include <EEPROM.h>            // For camera to function
-
-#include "remote.h"            // Header for RemoteXY GUI configuration
+#include <Wire.h>              // For I2C communication
 
 int pictureNumber = 0;
 
@@ -50,7 +46,7 @@ void take_photo(camera_fb_t *fb){
   }
 
   // Update GUI
-  updateMinMax(fb, fb->len, &RemoteXY.pixelValueLow, &RemoteXY.pixelValueHigh);
+  //updateMinMax(fb, fb->len, &RemoteXY.pixelValueLow, &RemoteXY.pixelValueHigh);
 
   pictureNumber = EEPROM.read(0) + 1;
 
@@ -77,19 +73,32 @@ void take_photo(camera_fb_t *fb){
   esp_camera_fb_return(fb); 
 }
 
+void receiveI2C(int len) {
+  Serial.println("I2C data received");
+  String i2cMsg = Wire.readString();
+  Serial.println("LED state: " + i2cMsg);
+  if (i2cMsg == "1"){
+    digitalWrite(FLASH_LED, HIGH);
+  } 
+  else if (i2cMsg == "0"){
+    digitalWrite(FLASH_LED, LOW);
+  }
+  
+}
+
 void setup() {
 
-  RemoteXY_Init(); 
+  Wire.begin(I2C_DEV_ADDR, I2C_SDA, I2C_SCL, I2C_FREQ);
+  //Wire.begin((uint8_t)I2C_DEV_ADDR, (uint8_t)I2C_SDA, (uint8_t)I2C_SCL);
+  Wire.onReceive(receiveI2C);
 
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); //disable brownout detector
 
-  pinMode(4, OUTPUT); // flash LED
+  pinMode(FLASH_LED, OUTPUT); // flash LED
  
-  RemoteXY_delay(1000);
   Serial.begin(115200);
   //Serial.setDebugOutput(true);
-  Serial.println("Terminal open");
-  RemoteXY_delay(1000);
+  Serial.println("LineCam online!");
   
   camera_config_t config;
   config.ledc_channel = LEDC_CHANNEL_0;
@@ -132,12 +141,11 @@ void setup() {
     Serial.println("Camera init success");
   }
   
-  Serial.println("Setup done...");
+  Serial.println("Setup done");
 }
 
 void loop() {
-  RemoteXY_Handler();
 
-  take_photo(fb);
-  RemoteXY_delay(100);
+  //take_photo(fb);
+  delay(100);
 }

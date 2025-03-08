@@ -12,3 +12,6 @@
 #define PWMB    15
 #define ROFFSET -1
 #define STBY    27
+
+// ESP <-> ESP communication
+#define I2C_DEV_ADDR 0x55

@@ -24,3 +24,11 @@
 
 // ########### End Camera Configuration ###########
 
+// LED Pin
+#define FLASH_LED 4
+
+// I2C Pins
+#define I2C_SDA 12
+#define I2C_SCL 13
+#define I2C_DEV_ADDR 0x55
+#define I2C_FREQ 100000
