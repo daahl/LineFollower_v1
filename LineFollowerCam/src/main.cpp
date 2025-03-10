@@ -10,14 +10,24 @@
 
 PIDResults pidValues = {0, 0};
 
+// for sending PID values over I2C
+union {
+  struct {
+    int32_t centerError;
+    int32_t speedMod;
+  } values;
+  uint8_t bytes[8];
+} I2Cdata;
+
 void onRequestI2C() {
 
-  if (serialDebug) {
-    Serial.print("I2C data requested. Sending PID values...");
-    Serial.println(pidValues.centerError + ":" + pidValues.speedError);
-  }
+  Serial.print("I2C data requested. Sending PID values: ");
+  Serial.println((String)pidValues.centerError + ":" + (String)pidValues.speedMod);
 
-  Wire.println(pidValues.centerError + ":" + pidValues.speedError);
+  I2Cdata.values.centerError = pidValues.centerError;
+  I2Cdata.values.speedMod = pidValues.speedMod;
+
+  Wire.write(I2Cdata.bytes, 8);
 }
 
 void onReceiveI2C(int len) {
@@ -71,6 +81,6 @@ void setup() {
 
 void loop() {
 
-  pid();
+  pidValues = pid();
 
 }

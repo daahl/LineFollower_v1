@@ -58,8 +58,6 @@ void take_photo(){
   
     fb = esp_camera_fb_get();
 
-    Serial.println(serialDebug);
-
     if (serialDebug) {
 
         if(!fb) {

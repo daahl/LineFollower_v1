@@ -9,6 +9,9 @@ Motor motorRR = Motor(BIN1, BIN2, PWMB, ROFFSET, STBY);
 int speed = 0;
 int turn = 0;
 
+int32_t centerError = 0;
+int32_t speedMod = 0;
+
 void writeI2C() {
   Serial.println("Writing I2C");
   Wire.beginTransmission((uint8_t)I2C_DEV_ADDR);
@@ -75,6 +78,27 @@ void loop() {
 
   //testMotors();
 
-  writeI2C();
+  //writeI2C();
 
+  uint8_t requestI2C = Wire.requestFrom(I2C_DEV_ADDR, 8);
+
+  if (requestI2C){
+    uint8_t I2Cbuffer[8];
+    Wire.readBytes(I2Cbuffer, 8);
+
+    // Convert first 4 bytes to centerError (big-endian)
+    centerError = ((int32_t)I2Cbuffer[0]) | 
+                 ((int32_t)I2Cbuffer[1] << 8) | 
+                 ((int32_t)I2Cbuffer[2] << 16) | 
+                 (int32_t)I2Cbuffer[3] << 24;
+
+    // Convert last 4 bytes to speedMod (big-endian)
+    speedMod = ((int32_t)I2Cbuffer[4]) | 
+               ((int32_t)I2Cbuffer[5] << 8) | 
+               ((int32_t)I2Cbuffer[6] << 16) | 
+               (int32_t)I2Cbuffer[7] << 24;
+
+  }
+  
+  Serial.println("Received: " + (String)centerError + ":" + (String)speedMod);
 }

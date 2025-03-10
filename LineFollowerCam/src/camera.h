@@ -7,7 +7,7 @@
 typedef struct {
 
     int32_t centerError;
-    int32_t speedError;
+    int32_t speedMod;
 
 } PIDResults;
 
