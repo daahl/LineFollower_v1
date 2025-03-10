@@ -1,3 +1,6 @@
+#ifndef DEFINES_H
+#define DEFINES_H
+
 // ########### Camera Configuration ###########
 
 // define the number of bytes you want to access
@@ -32,3 +35,8 @@
 #define I2C_SCL 13
 #define I2C_DEV_ADDR 0x55
 #define I2C_FREQ 100000
+
+// Debugging
+extern bool serialDebug;
+
+#endif
