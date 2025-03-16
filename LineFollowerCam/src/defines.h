@@ -36,7 +36,4 @@
 #define I2C_DEV_ADDR 0x55
 #define I2C_FREQ 100000
 
-// Debugging
-extern bool serialDebug;
-
 #endif

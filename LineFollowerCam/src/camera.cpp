@@ -11,7 +11,7 @@ uint8_t centerLAR = 120;
 // at which row does the center line affect the speed of the robot (ie. slow down before curves), <= fb->height
 uint8_t speedLAR = 120;
 // threshold for line detection, assume black line on white background, 0-255
-uint8_t BWthreshold = 180;
+extern uint16_t BWthreshold;
 
 void initCamera(){ 
 
@@ -58,6 +58,11 @@ void take_photo(){
   
     fb = esp_camera_fb_get();
 
+    bool serialDebug = false;
+
+    int32_t blacks = 0;
+    int32_t whites = 0;
+
     if (serialDebug) {
 
         if(!fb) {
@@ -74,8 +79,10 @@ void take_photo(){
 
                 if (fb->buf[k+i] > BWthreshold){
                     Serial.print("1");
+                    whites += 1;
                 } else {
                     Serial.print("0");
+                    blacks += 1;
                 }
             }
 
@@ -83,12 +90,20 @@ void take_photo(){
 
         }
 
+
+        Serial.println("Blacks: " + (String)blacks);
+        Serial.println("Whites: " + (String)whites);
+        Serial.println();
+
     }
 
     esp_camera_fb_return(fb); 
 };
 
 void ledState(String f){
+
+    bool serialDebug = false;
+
     if (f == "on"){
         digitalWrite(FLASH_LED, HIGH);
     } 
@@ -116,6 +131,8 @@ PIDResults pid(){
 
     PIDResults results = {0, 0};
 
+    bool serialDebug = true;
+
     // take photo
     take_photo();
 
@@ -127,7 +144,7 @@ PIDResults pid(){
     int endRow = fb->height - centerLAR;          // Stop at centerLAR rows from bottom
     if (endRow < 0) endRow = 0;    
 
-    for (int row = startRow; row > endRow; row = row - fb->width){
+    for (int row = startRow; row > endRow; row = row - 1){
 
         // Calculate buffer position for this row
         int rowStartPos = row * fb->width;

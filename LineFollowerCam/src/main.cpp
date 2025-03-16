@@ -8,6 +8,8 @@
 #include "Wire.h"              // For I2C communication
 #include "camera.h"
 
+int16_t BWthreshold = 130;
+
 PIDResults pidValues = {0, 0};
 
 // for sending PID values over I2C
@@ -21,8 +23,12 @@ union {
 
 void onRequestI2C() {
 
-  Serial.print("I2C data requested. Sending PID values: ");
-  Serial.println((String)pidValues.centerError + ":" + (String)pidValues.speedMod);
+  bool serialDebug = false;
+
+  if (serialDebug) {
+    Serial.print("I2C data requested. Sending PID values: ");
+    Serial.println((String)pidValues.centerError + ":" + (String)pidValues.speedMod);
+  }
 
   I2Cdata.values.centerError = pidValues.centerError;
   I2Cdata.values.speedMod = pidValues.speedMod;
@@ -32,20 +38,16 @@ void onRequestI2C() {
 
 void onReceiveI2C(int len) {
 
+  bool serialDebug = false;
+
+  int16_t i2cMsg = Wire.read();
+
+  BWthreshold = i2cMsg;
+
   if (serialDebug) {
-    Serial.println("I2C data received");
+    Serial.println("I2C Msg: " + (String)i2cMsg);
   }
-
-  ledState("blink");
-
-  String i2cMsg = Wire.readString();
-  Serial.println("LED state: " + i2cMsg);
-  if (i2cMsg == "1"){
-    digitalWrite(FLASH_LED, HIGH);
-  } 
-  else if (i2cMsg == "0"){
-    digitalWrite(FLASH_LED, LOW);
-  }
+  
   
 }
 
