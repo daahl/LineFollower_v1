@@ -151,7 +151,7 @@ void loop() {
                                   I2Cbuffer[15] << 24);
   }
 
-  float LPFilter = 0.3;
+  float LPFilter = 0;
 
   turnValue = (I2CData.nearError*Pfactor*0
               + I2CData.midError*Pfactor
