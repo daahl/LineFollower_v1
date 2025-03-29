@@ -6,17 +6,19 @@
 
 typedef struct {
 
-    int32_t centerError;
+    int32_t nearError;
+    int32_t midError;
+    int32_t farError;
     int32_t speedMod;
 
-} PIDResults;
+} CamValues;
 
-void initCamera();
+void init_camera();
 
 void take_photo();
 
 void ledState(String f);
 
-PIDResults pid();
+CamValues calculate_cam_values();
 
 #endif

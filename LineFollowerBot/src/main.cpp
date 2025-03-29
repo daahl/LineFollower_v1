@@ -6,16 +6,17 @@
 // Motor setup
 Motor motorLL = Motor(AIN1, AIN2, PWMA, LOFFSET, STBY);
 Motor motorRR = Motor(BIN1, BIN2, PWMB, ROFFSET, STBY);
-int speed = 20;
+int speed = 30;
 
-int32_t centerError = 0;
-float speedMod = 0;
+struct {
+  int32_t nearError;
+  int32_t midError;
+  int32_t farError;
+  int32_t speedMod;
+} I2CData;
 
-float Pfactor = 0.001;
-float turn = 0;
-#define historyLength 10
-int turnHistory[historyLength];
-float turnAvg = 0;
+float Pfactor = 0;
+float turnValue = 0;
 
 uint8_t requestI2C;
 
@@ -41,20 +42,20 @@ uint8_t requestI2C;
 
 // RemoteXY GUI configuration  
 #pragma pack(push, 1)  
-uint8_t RemoteXY_CONF[] =   // 88 bytes
-  { 255,4,0,2,0,81,0,19,0,0,0,76,105,110,101,67,97,109,0,8,
-  1,106,200,1,1,4,0,2,30,125,44,22,0,2,26,31,31,79,78,0,
-  79,70,70,0,7,32,52,40,10,118,64,2,26,2,12,32,81,40,10,193,
-  30,26,115,110,97,105,108,0,110,111,114,109,97,108,0,102,97,115,116,0,
-  67,32,25,40,10,86,2,26 };
+uint8_t RemoteXY_CONF[] =   // 96 bytes
+  { 255,8,0,2,0,89,0,19,0,0,0,76,105,110,101,67,97,109,0,8,
+  1,106,200,1,1,5,0,7,32,52,40,10,118,64,2,26,2,67,32,25,
+  40,10,86,2,26,7,32,79,40,10,118,64,2,26,2,7,32,105,40,10,
+  110,64,2,26,2,2,129,12,9,85,8,64,17,69,114,114,111,114,44,32,
+  66,87,44,32,83,112,101,101,100,44,32,80,118,97,108,0 };
   
 // this structure defines all the variables and events of your control interface 
 struct {
 
     // input variables
-  uint8_t motorsState; // =1 if switch ON and =0 if OFF
-  int16_t bwThreshold; // -32768 .. +32767
-  uint8_t speedState; // from 0 to 3
+  int16_t bwThreshold = 130; // -32768 .. +32767
+  int16_t speed = 30; // -32768 .. +32767
+  float Pvalue = 0.001;
 
     // output variables
   int16_t centerError; // -32768 .. +32767
@@ -74,23 +75,6 @@ void writeI2C() {
   Wire.beginTransmission((uint8_t)I2C_DEV_ADDR);
   Wire.write(RemoteXY.bwThreshold);
   Wire.endTransmission(true);
-}
-
-void testMotors() {
-  motorLL.drive(255);
-  motorRR.drive(255);
-  delay(1000);
-  motorLL.drive(-255);
-  motorRR.drive(-255);
-  delay(1000);
-  motorLL.brake();
-  motorRR.brake();
-  delay(1000);
-}
-
-void driveMotors(){
-  motorLL.drive(speed + turn);
-  motorRR.drive(speed - turn);
 }
 
 void initLEDS() {
@@ -121,10 +105,6 @@ void setup() {
 
   Wire.begin();
 
-  for (int i = 0; i < historyLength; i++) {
-    turnHistory[i] = 0;
-  }
-
   initLEDS();
 
   blinkLEDS();
@@ -135,47 +115,52 @@ void loop() {
 
   RemoteXY_Handler();
 
+  speed = RemoteXY.speed;
+  Pfactor = RemoteXY.Pvalue;
+
   writeI2C();
 
-  requestI2C = Wire.requestFrom(I2C_DEV_ADDR, 8);
+  requestI2C = Wire.requestFrom(I2C_DEV_ADDR, 16);
 
   if (requestI2C){
-    uint8_t I2Cbuffer[8];
-    Wire.readBytes(I2Cbuffer, 8);
+    uint8_t I2Cbuffer[16];
+    Wire.readBytes(I2Cbuffer, 16);
 
-    // Convert first 4 bytes to centerError (big-endian)
-    centerError = ((int32_t)I2Cbuffer[0]) | 
-                 ((int32_t)I2Cbuffer[1] << 8) | 
-                 ((int32_t)I2Cbuffer[2] << 16) | 
-                 ((int32_t)I2Cbuffer[3] << 24);
+    Serial.print("I2C: ");
 
-    // Convert last 4 bytes to speedMod (big-endian)
-    speedMod = ((int32_t)I2Cbuffer[4]) | 
-               ((int32_t)I2Cbuffer[5] << 8) | 
-               ((int32_t)I2Cbuffer[6] << 16) | 
-               ((int32_t)I2Cbuffer[7] << 24);
+    I2CData.nearError = (int32_t)(I2Cbuffer[0] | 
+                                  I2Cbuffer[1] << 8 | 
+                                  I2Cbuffer[2] << 16 |
+                                  I2Cbuffer[3] << 24);
 
+    Serial.print(I2CData.nearError);
+
+    I2CData.midError = (int32_t)(I2Cbuffer[4] |
+                                  I2Cbuffer[5] << 8 | 
+                                  I2Cbuffer[6] << 16 |
+                                  I2Cbuffer[7] << 24);
+    
+    I2CData.farError = (int32_t)(I2Cbuffer[8] |
+                                  I2Cbuffer[9] << 8 | 
+                                  I2Cbuffer[10] << 16 |
+                                  I2Cbuffer[11] << 24);
+
+    I2CData.speedMod = (int32_t)(I2Cbuffer[12] |
+                                  I2Cbuffer[13] << 8 | 
+                                  I2Cbuffer[14] << 16 |
+                                  I2Cbuffer[15] << 24);
   }
-  
-  //Serial.println("Received: " + (String)centerError);
 
-  turn = centerError*Pfactor;
+  float LPFilter = 0.7;
 
-  turnAvg = 0;
+  turnValue = (I2CData.nearError*Pfactor*0
+              + I2CData.midError*Pfactor
+              + I2CData.farError*Pfactor*0)*(1-LPFilter) + turnValue*LPFilter;
 
-  for (int i = historyLength - 1; i > 0; i--) {
-    turnHistory[i] = turnHistory[i - 1];
-    turnAvg += turnHistory[i];
-  }
+  RemoteXY.centerError = constrain((int16_t)turnValue, -32768, 32767);
 
-  turnHistory[0] = turn;
-  turnAvg += turnHistory[0];
-  turnAvg /= historyLength;
-
-  RemoteXY.centerError = constrain((int16_t)turnAvg, -32768, 32767);
-
-  motorLL.drive(speed - (int)turnAvg);
-  motorRR.drive(speed + (int)turnAvg);
+  motorLL.drive(speed - (int)turnValue);
+  motorRR.drive(speed + (int)turnValue);
 
   RemoteXY_delay(50);
 }

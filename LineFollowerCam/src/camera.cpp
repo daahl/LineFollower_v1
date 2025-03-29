@@ -6,14 +6,17 @@ camera_fb_t *fb = NULL;
 camera_config_t config;
 
 // tuneing parameters, look ahead rows
-// how many rows ahead of the robot will determine the center of the line. <= fb->height
+// how many rows ahead of the robot will determine the center of the line. 
+// <= fb->height
 uint8_t centerLAR = 120; 
-// at which row does the center line affect the speed of the robot (ie. slow down before curves), <= fb->height
+// at which row does the center line affect the speed of the robot 
+// (ie. slow down before curves), <= fb->height
 uint8_t speedLAR = 120;
 // threshold for line detection, assume black line on white background, 0-255
+// given from GUI through I2C master
 extern uint16_t BWthreshold;
 
-void initCamera(){ 
+void init_camera(){ 
 
     config.ledc_channel = LEDC_CHANNEL_0;
     config.ledc_timer = LEDC_TIMER_0;
@@ -127,36 +130,66 @@ void ledState(String f){
 
 };
 
-PIDResults pid(){
+CamValues calculate_cam_values(){
 
-    PIDResults results = {0, 0};
+    CamValues values = {0, 0, 0, 0};
 
-    bool serialDebug = true;
+    bool serialDebug = false;
 
     // take photo
     take_photo();
 
-    // calculate centering
-    // remember that camera is mounted upside down!!
-    // pixel count = width*height
-    // black = 0, white = 255
-    int startRow = fb->height - 1;                // Bottom row (closest to robot)
-    int endRow = fb->height - centerLAR;          // Stop at centerLAR rows from bottom
-    if (endRow < 0) endRow = 0;    
+    // calculate centering based on a 3x3 grid
+    // near error, middle error, and far error, can have different PID values
+    // since th sensor is flipped, x0 and y0 are at the bottom right corner
+    int nearLimit = (fb->height/3)*fb->width;
+    int midLimit = (2*fb->height/3)*fb->width;
+    int rightLim = fb->width/3; // read image from right to left
+    int leftLim = 2*fb->width/3;
 
-    for (int row = startRow; row > endRow; row = row - 1){
+    // reset values
+    values = {0, 0, 0, 0};
 
-        // Calculate buffer position for this row
-        int rowStartPos = row * fb->width;
+    for (int row = 1; row <= fb->height; row++){
 
-        for (int col = 0; col < fb->width; col++){
-           
-            // Determine if pixel is on left or right side
-            int LR = (col < fb->width/2) ? -1 : 1;
+        int rightPixelStart = (row-1)*fb->width;
+        int pixelStop = rightPixelStart + rightLim;
 
-            // only count black pixels
-            if (fb->buf[rowStartPos + col] < BWthreshold){
-                results.centerError += LR;
+        // count right and left columns at the same time
+        for (int pixel = rightPixelStart; pixel < pixelStop; pixel++){
+
+            // near error
+            if (pixel < nearLimit){
+
+                if (fb->buf[pixel] < BWthreshold){
+                    values.nearError += 1;
+                }
+                if (fb->buf[pixel + leftLim] < BWthreshold){
+                    values.nearError -= 1;
+                }
+
+            }
+            // mid error
+            else if (nearLimit <= pixel && pixel < midLimit){
+
+                if (fb->buf[pixel] < BWthreshold){
+                    values.midError += 1;
+                }
+                if (fb->buf[pixel + leftLim] < BWthreshold){
+                    values.midError -= 1;
+                }
+
+            }
+            // far error
+            else if (midLimit <= pixel){
+
+                if (fb->buf[pixel] < BWthreshold){
+                    values.farError += 1;
+                }
+                if (fb->buf[pixel + leftLim] < BWthreshold){
+                    values.farError -= 1;
+                }
+
             }
 
         }
@@ -164,9 +197,11 @@ PIDResults pid(){
     }
 
     if (serialDebug){
-        Serial.println("Error: " + String(results.centerError));
+        Serial.println(String(values.nearError) + " || " 
+                        + String(values.midError) + " || "
+                        + String(values.farError));
     }
 
-    return results;
+    return values;
 
 };
