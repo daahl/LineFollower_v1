@@ -9,7 +9,7 @@ typedef struct {
     int32_t nearError;
     int32_t midError;
     int32_t farError;
-    int32_t speedMod;
+    int32_t BWRatio;
 
 } CamValues;
 

@@ -157,6 +157,13 @@ CamValues calculate_cam_values(){
         // count right and left columns at the same time
         for (int pixel = rightPixelStart; pixel < pixelStop; pixel++){
 
+            // to be used to see if we're off the line completely
+            if (fb->buf[pixel] < BWthreshold){
+                values.BWRatio += 1;
+            } else {
+                values.BWRatio -= 1;
+            }
+
             // near error
             if (pixel < nearLimit){
 
@@ -198,7 +205,8 @@ CamValues calculate_cam_values(){
     if (serialDebug){
         Serial.println(String(values.nearError) + " || " 
                         + String(values.midError) + " || "
-                        + String(values.farError));
+                        + String(values.farError) + " || "
+                        + String(values.BWRatio));
     }
 
     return values;

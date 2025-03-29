@@ -20,7 +20,7 @@ union {
     int32_t nearError;
     int32_t midError;
     int32_t farError;
-    int32_t speedMod;
+    int32_t BWRatio;
   } values;
   uint8_t bytes[I2C_DATA_SIZE];
 } I2Cdata;
@@ -32,10 +32,10 @@ void on_request_I2C() {
   I2Cdata.values.nearError = camValues.nearError;
   I2Cdata.values.midError = camValues.midError;
   I2Cdata.values.farError = camValues.farError;
-  I2Cdata.values.speedMod = camValues.speedMod;
+  I2Cdata.values.BWRatio = camValues.BWRatio;
 
   if (serialDebug) {
-    Serial.println("I2C data: " + (String)I2Cdata.values.nearError + ":" + (String)I2Cdata.values.midError + ":" + (String)I2Cdata.values.farError + ":" + (String)I2Cdata.values.speedMod);
+    Serial.println("I2C data: " + (String)I2Cdata.values.nearError + ":" + (String)I2Cdata.values.midError + ":" + (String)I2Cdata.values.farError + ":" + (String)I2Cdata.values.BWRatio);
   }
 
   Wire.write(I2Cdata.bytes, I2C_DATA_SIZE);

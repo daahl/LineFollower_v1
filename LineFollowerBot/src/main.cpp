@@ -6,19 +6,25 @@
 // Motor setup
 Motor motorLL = Motor(AIN1, AIN2, PWMA, LOFFSET, STBY);
 Motor motorRR = Motor(BIN1, BIN2, PWMB, ROFFSET, STBY);
-int speed = 30;
+int speed = 0;
 
 struct {
   int32_t nearError;
   int32_t midError;
   int32_t farError;
-  int32_t speedMod;
+  int32_t BWratio;
 } I2CData;
 
-float Pfactor = 0;
-float turnValue = 0;
-
 uint8_t requestI2C;
+
+float Pfactor = 0.003;
+float Dfactor = 0; // not implmented yet
+float currError = 0;
+float lastError = 0;
+float dError = 0;
+float lastTime = 0;
+float currTime = 0;
+float turnValue = 0;
 
 //////////////////////////////////////////////
 //        RemoteXY include library          //
@@ -115,8 +121,9 @@ void loop() {
 
   RemoteXY_Handler();
 
-  speed = RemoteXY.speed;
+  
   Pfactor = RemoteXY.Pvalue;
+  //Dfactor = RemoteXY.Pvalue; // TEMP
 
   writeI2C();
 
@@ -145,20 +152,35 @@ void loop() {
                                   I2Cbuffer[10] << 16 |
                                   I2Cbuffer[11] << 24);
 
-    I2CData.speedMod = (int32_t)(I2Cbuffer[12] |
+    I2CData.BWratio = (int32_t)(I2Cbuffer[12] |
                                   I2Cbuffer[13] << 8 | 
                                   I2Cbuffer[14] << 16 |
                                   I2Cbuffer[15] << 24);
   }
 
-  float LPFilter = 0;
+  /*lastTime = currTime;
+  currTime = millis();
 
-  turnValue = (I2CData.nearError*Pfactor*0
-              + I2CData.midError*Pfactor
-              + I2CData.farError*Pfactor*0)*(1-LPFilter) + turnValue*LPFilter;
+  lastError = currError;
+  currError = I2CData.midError;
+  dError = (currError - lastError) / (currTime - lastTime);
+
+  turnValue = currError * Pfactor + dError * Dfactor;*/
+
+  // base case, there is a line in front of the robot, ie semi straight road
+  if (abs(I2CData.farError) > 500) {
+    turnValue = I2CData.midError * Pfactor;
+    speed = RemoteXY.speed;
+
+  // no line, we're at a curve
+  } else {
+    turnValue = I2CData.nearError * Pfactor * 5;
+    speed = RemoteXY.speed * 0.5;
+  }
 
   RemoteXY.centerError = constrain((int16_t)turnValue, -32768, 32767);
 
+  // TODO add constraints
   motorLL.drive(speed + (int)turnValue);
   motorRR.drive(speed - (int)turnValue);
 
