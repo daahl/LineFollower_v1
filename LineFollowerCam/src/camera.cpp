@@ -4,6 +4,7 @@
 
 camera_fb_t *fb = NULL;
 camera_config_t config;
+CamValues values = {0, 0, 0, 0};
 
 // tuneing parameters, look ahead rows
 // how many rows ahead of the robot will determine the center of the line. 
@@ -132,8 +133,6 @@ void ledState(String f){
 
 CamValues calculate_cam_values(){
 
-    CamValues values = {0, 0, 0, 0};
-
     bool serialDebug = false;
 
     // take photo
@@ -143,7 +142,7 @@ CamValues calculate_cam_values(){
     // near error, middle error, and far error, can have different PID values
     // since th sensor is flipped, x0 and y0 are at the bottom right corner
     int nearLimit = (fb->height/3)*fb->width;
-    int midLimit = (2*fb->height/3)*fb->width;
+    int midLimit = (3*fb->height/4)*fb->width;
     int rightLim = fb->width/3; // read image from right to left
     int leftLim = 2*fb->width/3;
 

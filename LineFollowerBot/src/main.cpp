@@ -53,7 +53,7 @@ uint8_t RemoteXY_CONF[] =   // 96 bytes
 struct {
 
     // input variables
-  int16_t bwThreshold = 130; // -32768 .. +32767
+  int16_t bwThreshold = 220; // -32768 .. +32767
   int16_t speed = 30; // -32768 .. +32767
   float Pvalue = 0.001;
 
@@ -151,7 +151,7 @@ void loop() {
                                   I2Cbuffer[15] << 24);
   }
 
-  float LPFilter = 0.7;
+  float LPFilter = 0.3;
 
   turnValue = (I2CData.nearError*Pfactor*0
               + I2CData.midError*Pfactor
@@ -159,8 +159,8 @@ void loop() {
 
   RemoteXY.centerError = constrain((int16_t)turnValue, -32768, 32767);
 
-  motorLL.drive(speed - (int)turnValue);
-  motorRR.drive(speed + (int)turnValue);
+  motorLL.drive(speed + (int)turnValue);
+  motorRR.drive(speed - (int)turnValue);
 
   RemoteXY_delay(50);
 }
