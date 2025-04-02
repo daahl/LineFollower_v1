@@ -15,3 +15,7 @@
 
 // ESP <-> ESP communication
 #define I2C_DEV_ADDR 0x55
+
+// EEPROM
+#define EEPROM_SIZE sizeof(EEPROMData)
+#define EEPROM_ADDR 0

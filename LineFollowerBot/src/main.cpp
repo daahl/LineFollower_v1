@@ -2,12 +2,15 @@
 #include "defines.h"
 #include "SparkFun_TB6612.h"
 #include "Wire.h"
+#include <EEPROM.h>
+#include "RemoteXY_gui.h"
 
 // Motor setup
 Motor motorLL = Motor(AIN1, AIN2, PWMA, LOFFSET, STBY);
 Motor motorRR = Motor(BIN1, BIN2, PWMB, ROFFSET, STBY);
 int speed = 0;
 
+// I2C setup
 struct {
   int32_t nearError;
   int32_t midError;
@@ -17,6 +20,19 @@ struct {
 
 uint8_t requestI2C;
 
+// Memory setup
+struct DataStruct {
+  int16_t bwThreshold; // -32768 .. +32767
+  int16_t speed; // -32768 .. +32767
+  float Pvalue;
+};
+
+DataStruct EEPROMData;
+DataStruct GUIData;
+
+bool EEPROM2GUI = true;
+
+// Control setup
 float Pfactor = 0.003;
 float Dfactor = 0; // not implmented yet
 float currError = 0;
@@ -25,56 +41,6 @@ float dError = 0;
 float lastTime = 0;
 float currTime = 0;
 float turnValue = 0;
-
-//////////////////////////////////////////////
-//        RemoteXY include library          //
-//////////////////////////////////////////////
-
-// you can enable debug logging to Serial at 115200
-//#define REMOTEXY__DEBUGLOG    
-
-// RemoteXY select connection mode and include library 
-#define REMOTEXY_MODE__WIFI_POINT
-
-#include <WiFi.h>
-
-// RemoteXY connection settings 
-#define REMOTEXY_WIFI_SSID "LineCam"
-#define REMOTEXY_WIFI_PASSWORD "LineCam!"
-#define REMOTEXY_SERVER_PORT 6377
-
-
-#include <RemoteXY.h>
-
-// RemoteXY GUI configuration  
-#pragma pack(push, 1)  
-uint8_t RemoteXY_CONF[] =   // 96 bytes
-  { 255,8,0,2,0,89,0,19,0,0,0,76,105,110,101,67,97,109,0,8,
-  1,106,200,1,1,5,0,7,32,52,40,10,118,64,2,26,2,67,32,25,
-  40,10,86,2,26,7,32,79,40,10,118,64,2,26,2,7,32,105,40,10,
-  110,64,2,26,2,2,129,12,9,85,8,64,17,69,114,114,111,114,44,32,
-  66,87,44,32,83,112,101,101,100,44,32,80,118,97,108,0 };
-  
-// this structure defines all the variables and events of your control interface 
-struct {
-
-    // input variables
-  int16_t bwThreshold = 220; // -32768 .. +32767
-  int16_t speed = 30; // -32768 .. +32767
-  float Pvalue = 0.001;
-
-    // output variables
-  int16_t centerError; // -32768 .. +32767
-
-    // other variable
-  uint8_t connect_flag;  // =1 if wire connected, else =0
-
-} RemoteXY;   
-#pragma pack(pop)
- 
-/////////////////////////////////////////////
-//           END RemoteXY include          //
-/////////////////////////////////////////////
 
 // Write GUI settings to I2C
 void writeI2C() {
@@ -111,7 +77,30 @@ void setup() {
 
   Wire.begin();
 
+  EEPROM.begin(EEPROM_SIZE);
+
   initLEDS();
+
+  blinkLEDS();
+
+  // Must be connected to app to drive
+  while (EEPROM2GUI) {
+
+    // Update GUI with last settings
+    if (RemoteXY.connect_flag) {
+      EEPROM.readBytes(EEPROM_ADDR, &GUIData, EEPROM_SIZE);
+
+      RemoteXY.bwThreshold = GUIData.bwThreshold;
+      RemoteXY.speed = GUIData.speed;
+      RemoteXY.Pvalue = GUIData.Pvalue;
+
+      EEPROM2GUI = false;
+      break;
+    }
+
+    RemoteXY_delay(100);
+
+  }
 
   blinkLEDS();
 
@@ -119,9 +108,22 @@ void setup() {
 
 void loop() {
 
+  // Save new GUI settings to EEPROM on request
+  if (RemoteXY.EEPROM){
+    memcpy(&EEPROMData, &GUIData, EEPROM_SIZE);
+    EEPROM.writeBytes(EEPROM_ADDR, &EEPROMData, EEPROM_SIZE);
+    EEPROM.commit();
+    RemoteXY.EEPROM = 0;
+    Serial.println("EEPROM updated");
+  }
+
+  GUIData.bwThreshold = RemoteXY.bwThreshold;
+
+  Serial.println("bwThreshold: " + (String)GUIData.bwThreshold);
+
+
   RemoteXY_Handler();
 
-  
   Pfactor = RemoteXY.Pvalue;
   //Dfactor = RemoteXY.Pvalue; // TEMP
 
@@ -181,8 +183,14 @@ void loop() {
   RemoteXY.centerError = constrain((int16_t)turnValue, -32768, 32767);
 
   // TODO add constraints
-  motorLL.drive(speed + (int)turnValue);
-  motorRR.drive(speed - (int)turnValue);
+  // TODO try to make it such that turnValue only increases speed, never decreases
+  if (RemoteXY.MotorState) {
+
+    motorLL.drive(speed + (int)turnValue);
+    motorRR.drive(speed - (int)turnValue);
+
+  }
+  
 
   RemoteXY_delay(50);
 }
