@@ -87,8 +87,7 @@ void setup() {
 }
 
 void loop() {
-
+  
   camValues = calculate_cam_values();
-  //delay(3000);
 
 }

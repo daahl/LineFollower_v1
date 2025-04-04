@@ -8,7 +8,9 @@
 // Motor setup
 Motor motorLL = Motor(AIN1, AIN2, PWMA, LOFFSET, STBY);
 Motor motorRR = Motor(BIN1, BIN2, PWMB, ROFFSET, STBY);
-int speed = 0;
+int16_t motorSpeed;
+int16_t LLSpeed;
+int16_t RRSpeed;
 
 // I2C setup
 struct {
@@ -18,14 +20,21 @@ struct {
   int32_t BWratio;
 } I2CData;
 
-uint8_t requestI2C;
-
 // Memory setup
 struct DataStruct {
   int16_t bwThreshold; // -32768 .. +32767
-  int16_t speed; // -32768 .. +32767
-  float Pvalue;
+  int16_t BWCurveThr; // -32768 .. +32767, threshold for curve detection
+  int16_t NSpeed; // -32768 .. +32767, speed in curves (N) and on straights (F)
+  int16_t FSpeed; // -32768 .. +32767
+  uint8_t UseCamera;
+  float LROffset; // > 1.0, factor that R motor should be faster then L motor
+  float NNearP; // P values for near and mid areas, near and far away
+  float NMidP;
+  float FNearP;
+  float FMidP;
 };
+
+float PFactor = 10000; // To lower GUI values
 
 DataStruct EEPROMData;
 DataStruct GUIData;
@@ -33,8 +42,7 @@ DataStruct GUIData;
 bool EEPROM2GUI = true;
 
 // Control setup
-float Pfactor = 0.003;
-float Dfactor = 0; // not implmented yet
+//float Dfactor = 0; // not implmented yet
 float currError = 0;
 float lastError = 0;
 float dError = 0;
@@ -45,8 +53,43 @@ float turnValue = 0;
 // Write GUI settings to I2C
 void writeI2C() {
   Wire.beginTransmission((uint8_t)I2C_DEV_ADDR);
-  Wire.write(RemoteXY.bwThreshold);
+  Wire.write(GUIData.bwThreshold);
   Wire.endTransmission(true);
+}
+
+// Read data from camera
+void readI2C() {
+  uint8_t requestI2C = Wire.requestFrom(I2C_DEV_ADDR, 16);
+
+  if (requestI2C){
+    uint8_t I2Cbuffer[16];
+    Wire.readBytes(I2Cbuffer, 16);
+
+    I2CData.nearError = (int32_t)(I2Cbuffer[0] | 
+                                  I2Cbuffer[1] << 8 | 
+                                  I2Cbuffer[2] << 16 |
+                                  I2Cbuffer[3] << 24);
+
+    I2CData.midError = (int32_t)(I2Cbuffer[4] |
+                                  I2Cbuffer[5] << 8 | 
+                                  I2Cbuffer[6] << 16 |
+                                  I2Cbuffer[7] << 24);
+    
+    I2CData.farError = (int32_t)(I2Cbuffer[8] |
+                                  I2Cbuffer[9] << 8 | 
+                                  I2Cbuffer[10] << 16 |
+                                  I2Cbuffer[11] << 24);
+
+    I2CData.BWratio = (int32_t)(I2Cbuffer[12] |
+                                  I2Cbuffer[13] << 8 | 
+                                  I2Cbuffer[14] << 16 |
+                                  I2Cbuffer[15] << 24);
+
+    Serial.print("near: " + String(I2CData.nearError));
+    Serial.print("\tmid: " + String(I2CData.midError));
+    Serial.print("\tfar: " + String(I2CData.farError));
+    Serial.println("\tBW: " + String(I2CData.BWratio));
+  }
 }
 
 void initLEDS() {
@@ -91,8 +134,15 @@ void setup() {
       EEPROM.readBytes(EEPROM_ADDR, &GUIData, EEPROM_SIZE);
 
       RemoteXY.bwThreshold = GUIData.bwThreshold;
-      RemoteXY.speed = GUIData.speed;
-      RemoteXY.Pvalue = GUIData.Pvalue;
+      RemoteXY.BWCurveThr = GUIData.BWCurveThr;
+      RemoteXY.LROffset = GUIData.LROffset;
+      RemoteXY.UseCamera = GUIData.UseCamera;
+      RemoteXY.NSpeed = GUIData.NSpeed;
+      RemoteXY.FSpeed = GUIData.FSpeed;
+      RemoteXY.NNearP = GUIData.NNearP;
+      RemoteXY.NMidP = GUIData.NMidP;
+      RemoteXY.FNearP = GUIData.FNearP;
+      RemoteXY.FMidP = GUIData.FMidP;
 
       EEPROM2GUI = false;
       break;
@@ -108,6 +158,8 @@ void setup() {
 
 void loop() {
 
+  RemoteXY_Handler();
+
   // Save new GUI settings to EEPROM on request
   if (RemoteXY.EEPROM){
     memcpy(&EEPROMData, &GUIData, EEPROM_SIZE);
@@ -117,48 +169,26 @@ void loop() {
     Serial.println("EEPROM updated");
   }
 
+  // Update values from GUI
   GUIData.bwThreshold = RemoteXY.bwThreshold;
+  GUIData.BWCurveThr = RemoteXY.BWCurveThr;
+  GUIData.LROffset = RemoteXY.LROffset;
+  GUIData.UseCamera = RemoteXY.UseCamera;
+  GUIData.NSpeed = RemoteXY.NSpeed;
+  GUIData.FSpeed = RemoteXY.FSpeed;
+  GUIData.NNearP = RemoteXY.NNearP;
+  GUIData.NMidP = RemoteXY.NMidP;
+  GUIData.FNearP = RemoteXY.FNearP;
+  GUIData.FMidP = RemoteXY.FMidP;
 
-  Serial.println("bwThreshold: " + (String)GUIData.bwThreshold);
+  // Allows to run bot without camera on
+  if (RemoteXY.UseCamera){
+    // Write values to camera
+    writeI2C();
 
-
-  RemoteXY_Handler();
-
-  Pfactor = RemoteXY.Pvalue;
-  //Dfactor = RemoteXY.Pvalue; // TEMP
-
-  writeI2C();
-
-  requestI2C = Wire.requestFrom(I2C_DEV_ADDR, 16);
-
-  if (requestI2C){
-    uint8_t I2Cbuffer[16];
-    Wire.readBytes(I2Cbuffer, 16);
-
-    Serial.print("I2C: ");
-
-    I2CData.nearError = (int32_t)(I2Cbuffer[0] | 
-                                  I2Cbuffer[1] << 8 | 
-                                  I2Cbuffer[2] << 16 |
-                                  I2Cbuffer[3] << 24);
-
-    Serial.print(I2CData.nearError);
-
-    I2CData.midError = (int32_t)(I2Cbuffer[4] |
-                                  I2Cbuffer[5] << 8 | 
-                                  I2Cbuffer[6] << 16 |
-                                  I2Cbuffer[7] << 24);
-    
-    I2CData.farError = (int32_t)(I2Cbuffer[8] |
-                                  I2Cbuffer[9] << 8 | 
-                                  I2Cbuffer[10] << 16 |
-                                  I2Cbuffer[11] << 24);
-
-    I2CData.BWratio = (int32_t)(I2Cbuffer[12] |
-                                  I2Cbuffer[13] << 8 | 
-                                  I2Cbuffer[14] << 16 |
-                                  I2Cbuffer[15] << 24);
-  }
+    // Read values from camera
+    readI2C();
+  
 
   /*lastTime = currTime;
   currTime = millis();
@@ -170,27 +200,47 @@ void loop() {
   turnValue = currError * Pfactor + dError * Dfactor;*/
 
   // base case, there is a line in front of the robot, ie semi straight road
-  if (abs(I2CData.farError) > 500) {
-    turnValue = I2CData.midError * Pfactor;
-    speed = RemoteXY.speed;
+  if (I2CData.BWratio > GUIData.BWCurveThr) {
+    turnValue = I2CData.nearError * GUIData.FNearP/PFactor + 
+                I2CData.midError * GUIData.FMidP/PFactor;
+    motorSpeed = GUIData.FSpeed;
 
   // no line, we're at a curve
   } else {
-    turnValue = I2CData.nearError * Pfactor * 5;
-    speed = RemoteXY.speed * 0.5;
+    turnValue = I2CData.nearError * GUIData.NNearP/PFactor + 
+                I2CData.midError * GUIData.NMidP/PFactor;
+    motorSpeed = GUIData.NSpeed;
   }
 
-  RemoteXY.centerError = constrain((int16_t)turnValue, -32768, 32767);
+}
+else {
+
+  // no camera, use default values
+  turnValue = 0;
+  motorSpeed = GUIData.FSpeed;
+
+}
 
   // TODO add constraints
   // TODO try to make it such that turnValue only increases speed, never decreases
   if (RemoteXY.MotorState) {
 
-    motorLL.drive(speed + (int)turnValue);
-    motorRR.drive(speed - (int)turnValue);
+    LLSpeed = (motorSpeed + (int)turnValue)*GUIData.LROffset;
+    RRSpeed = motorSpeed - (int)turnValue;
+
+    LLSpeed = (int)constrain(LLSpeed, -255, 255);
+    RRSpeed = (int)constrain(RRSpeed, -255, 255);
+
+    motorLL.drive(LLSpeed);
+    motorRR.drive(RRSpeed);
+
+  } else {
+
+    motorLL.brake();
+    motorRR.brake();
 
   }
-  
 
-  RemoteXY_delay(50);
+  // TODO increase this becuase camera needs 110 ms to finish processing
+  RemoteXY_delay(120);
 }

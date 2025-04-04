@@ -59,7 +59,7 @@ void init_camera(){
 };
 
 void take_photo(){
-  
+    
     fb = esp_camera_fb_get();
 
     bool serialDebug = false;
@@ -102,6 +102,7 @@ void take_photo(){
     }
 
     esp_camera_fb_return(fb); 
+    
 };
 
 void ledState(String f){
@@ -157,21 +158,16 @@ CamValues calculate_cam_values(){
         // count right and left columns at the same time
         for (int pixel = rightPixelStart; pixel < pixelStop; pixel++){
 
-            // to be used to see if we're off the line completely
-            if (fb->buf[pixel] < BWthreshold){
-                values.BWRatio += 1;
-            } else {
-                values.BWRatio -= 1;
-            }
-
             // near error
             if (pixel < nearLimit){
 
                 if (fb->buf[pixel] < BWthreshold){
                     values.nearError += 1;
+                    values.BWRatio += 1;
                 }
                 if (fb->buf[pixel + leftLim] < BWthreshold){
                     values.nearError -= 1;
+                    values.BWRatio += 1;
                 }
 
             }
@@ -180,9 +176,11 @@ CamValues calculate_cam_values(){
 
                 if (fb->buf[pixel] < BWthreshold){
                     values.midError += 1;
+                    values.BWRatio += 1;
                 }
                 if (fb->buf[pixel + leftLim] < BWthreshold){
                     values.midError -= 1;
+                    values.BWRatio += 1;
                 }
 
             }
@@ -191,9 +189,11 @@ CamValues calculate_cam_values(){
 
                 if (fb->buf[pixel] < BWthreshold){
                     values.farError += 1;
+                    values.BWRatio += 1;
                 }
                 if (fb->buf[pixel + leftLim] < BWthreshold){
                     values.farError -= 1;
+                    values.BWRatio += 1;
                 }
 
             }
@@ -201,7 +201,7 @@ CamValues calculate_cam_values(){
         }
 
     }
-
+ 
     if (serialDebug){
         Serial.println(String(values.nearError) + " || " 
                         + String(values.midError) + " || "
