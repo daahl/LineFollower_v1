@@ -37,12 +37,18 @@ void init_camera(){
     config.pin_sccb_scl = SIOC_GPIO_NUM;
     config.pin_pwdn = PWDN_GPIO_NUM;
     config.pin_reset = RESET_GPIO_NUM;
-    config.xclk_freq_hz = 20000000;
-    config.pixel_format = PIXFORMAT_GRAYSCALE; 
+    config.xclk_freq_hz = 40e6;
+    config.pixel_format = PIXFORMAT_GRAYSCALE;
+
+    //psramInit();
+    //config.fb_location = CAMERA_FB_IN_PSRAM;
+    //config.grab_mode = CAMERA_GRAB_LATEST;
     config.fb_count = 1;
+    
   
     //config.frame_size = FRAMESIZE_SXGA;
-    config.frame_size = FRAMESIZE_240X240;
+    config.frame_size = FRAMESIZE_QVGA;
+    //config.frame_size = FRAMESIZE_240X240;
     //config.frame_size = FRAMESIZE_96X96;
 
     pinMode(FLASH_LED, OUTPUT); // flash LED
@@ -59,7 +65,7 @@ void init_camera(){
 };
 
 void take_photo(){
-    
+
     fb = esp_camera_fb_get();
 
     bool serialDebug = false;
@@ -137,8 +143,11 @@ CamValues calculate_cam_values(){
     bool serialDebug = false;
 
     // take photo
+    float capTimeStart = millis();
     take_photo();
+    float capTimeDelta = millis() - capTimeStart;
 
+    float calcTimeStart = millis();
     // calculate centering based on a 3x3 grid
     // near error, middle error, and far error, can have different PID values
     // since th sensor is flipped, x0 and y0 are at the bottom right corner
@@ -208,6 +217,11 @@ CamValues calculate_cam_values(){
                         + String(values.farError) + " || "
                         + String(values.BWRatio));
     }
+
+    float calcTimeDelta = millis() - calcTimeStart;
+    
+    Serial.print("Capture: " + (String)capTimeDelta);
+    Serial.println("\tCalc: " + (String)calcTimeDelta);
 
     return values;
 
