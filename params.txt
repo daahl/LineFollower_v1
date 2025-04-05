@@ -1,0 +1,9 @@
+bwThreshol = 
+BWCurveThr = 
+LROffset = 
+NSpeed = 
+FSpeed = 
+NNearP = 
+NMidP = 
+FNearP = 
+FMidP = 

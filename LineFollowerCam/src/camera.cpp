@@ -37,19 +37,12 @@ void init_camera(){
     config.pin_sccb_scl = SIOC_GPIO_NUM;
     config.pin_pwdn = PWDN_GPIO_NUM;
     config.pin_reset = RESET_GPIO_NUM;
-    config.xclk_freq_hz = 40e6;
+    config.xclk_freq_hz = 20e6;
     config.pixel_format = PIXFORMAT_GRAYSCALE;
 
-    //psramInit();
-    //config.fb_location = CAMERA_FB_IN_PSRAM;
-    //config.grab_mode = CAMERA_GRAB_LATEST;
     config.fb_count = 1;
     
-  
-    //config.frame_size = FRAMESIZE_SXGA;
     config.frame_size = FRAMESIZE_QVGA;
-    //config.frame_size = FRAMESIZE_240X240;
-    //config.frame_size = FRAMESIZE_96X96;
 
     pinMode(FLASH_LED, OUTPUT); // flash LED
 
@@ -138,90 +131,105 @@ void ledState(String f){
 
 };
 
+struct limits {
+    int near; // bottom of area
+    int far; // top of area
+    int left; // left column, left -> edge
+    int right; // right column, edge -> right
+};
+
+limits LimNear;
+limits LimMid;
+limits LimFar;
+
 CamValues calculate_cam_values(){
 
-    bool serialDebug = false;
-
     // take photo
-    float capTimeStart = millis();
+    //float capTimeStart = millis();
     take_photo();
-    float capTimeDelta = millis() - capTimeStart;
+    //float capTimeDelta = millis() - capTimeStart;
 
-    float calcTimeStart = millis();
-    // calculate centering based on a 3x3 grid
-    // near error, middle error, and far error, can have different PID values
-    // since th sensor is flipped, x0 and y0 are at the bottom right corner
-    int nearLimit = (fb->height/3)*fb->width;
-    int midLimit = (3*fb->height/4)*fb->width;
-    int rightLim = fb->width/3; // read image from right to left
-    int leftLim = 2*fb->width/3;
+    //float calcTimeStart = millis();
+
+    // Set areas for near, mid, and far fields.
+    // Remeber that the image is flipped
+    // x0 y0 is at the bottom right corner
+    // QVGA = 320x240 = 76800 pixels
+    LimNear.near = fb->height/5;
+    LimNear.far = fb->height/3;
+    LimNear.left = 2*fb->width/3;
+    LimNear.right = fb->width/3;
+
+    LimMid.near = fb->height/2;
+    LimMid.far = 3*fb->height/4;
+    LimMid.left = LimNear.left;
+    LimMid.right = LimNear.right;
+
+    LimFar.near = 2*fb->height/3;
+    LimFar.far = fb->height;
+    LimFar.left = fb->width/2;
+    LimFar.right = 0;
 
     // reset values
     values = {0, 0, 0, 0};
 
-    for (int row = 1; row <= fb->height; row++){
+    for (int row = LimNear.near; row <= LimFar.far; row++){
 
-        int rightPixelStart = (row-1)*fb->width;
-        int pixelStop = rightPixelStart + rightLim;
+        // get start and stop pixels for near and midfield
+        int nmRightPxStart = (row-1)*fb->width;
+        int nmRightPxStop = nmRightPxStart + LimNear.left;
 
-        // count right and left columns at the same time
-        for (int pixel = rightPixelStart; pixel < pixelStop; pixel++){
+        // count pixels in near and mid fields
+        for (int px = nmRightPxStart; px < nmRightPxStop; px++){
 
             // near error
-            if (pixel < nearLimit){
-
-                if (fb->buf[pixel] < BWthreshold){
+            if (LimNear.near <= row && row < LimNear.far){
+                // right error
+                if (fb->buf[px] < BWthreshold){
                     values.nearError += 1;
-                    values.BWRatio += 1;
                 }
-                if (fb->buf[pixel + leftLim] < BWthreshold){
+                // left error
+                if (fb->buf[px + LimNear.left] < BWthreshold){
                     values.nearError -= 1;
-                    values.BWRatio += 1;
                 }
-
             }
+
             // mid error
-            else if (nearLimit <= pixel && pixel < midLimit){
-
-                if (fb->buf[pixel] < BWthreshold){
+            if (LimMid.near <= row && row < LimMid.far){
+                // right error
+                if (fb->buf[px] < BWthreshold){
                     values.midError += 1;
-                    values.BWRatio += 1;
                 }
-                if (fb->buf[pixel + leftLim] < BWthreshold){
+                // left error
+                if (fb->buf[px + LimMid.left] < BWthreshold){
                     values.midError -= 1;
-                    values.BWRatio += 1;
                 }
-
             }
-            // far error
-            else if (midLimit <= pixel){
-
-                if (fb->buf[pixel] < BWthreshold){
-                    values.farError += 1;
-                    values.BWRatio += 1;
-                }
-                if (fb->buf[pixel + leftLim] < BWthreshold){
-                    values.farError -= 1;
-                    values.BWRatio += 1;
-                }
-
-            }
-
         }
+    }
 
+    // count BW ratio in far field
+    for (int row = LimFar.near; row < LimFar.far; row++){
+
+        // get start and stop pixels for far field
+        int fRightPxStart = (row-1)*fb->width;
+        int fRightPxStop = fRightPxStart + fb->width;
+
+        for (int px = fRightPxStart; px < fRightPxStop; px++){
+            // count white pixels
+            if (fb->buf[px] < BWthreshold){
+                values.BWRatio += 1;
+            }
+        }
     }
  
+    bool serialDebug = true;
     if (serialDebug){
         Serial.println(String(values.nearError) + " || " 
                         + String(values.midError) + " || "
                         + String(values.farError) + " || "
                         + String(values.BWRatio));
     }
-
-    float calcTimeDelta = millis() - calcTimeStart;
-    
-    Serial.print("Capture: " + (String)capTimeDelta);
-    Serial.println("\tCalc: " + (String)calcTimeDelta);
 
     return values;
 

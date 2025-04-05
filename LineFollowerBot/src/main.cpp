@@ -42,7 +42,7 @@ DataStruct GUIData;
 bool EEPROM2GUI = true;
 
 // Control setup
-//float Dfactor = 0; // not implmented yet
+float Dfactor = 0; // not implmented yet
 float currError = 0;
 float lastError = 0;
 float dError = 0;
@@ -85,10 +85,10 @@ void readI2C() {
                                   I2Cbuffer[14] << 16 |
                                   I2Cbuffer[15] << 24);
 
-    Serial.print("near: " + String(I2CData.nearError));
+    /*Serial.print("near: " + String(I2CData.nearError));
     Serial.print("\tmid: " + String(I2CData.midError));
     Serial.print("\tfar: " + String(I2CData.farError));
-    Serial.println("\tBW: " + String(I2CData.BWratio));
+    Serial.println("\tBW: " + String(I2CData.BWratio));*/
   }
 }
 
@@ -190,14 +190,16 @@ void loop() {
     readI2C();
   
 
-  /*lastTime = currTime;
+  lastTime = currTime;
   currTime = millis();
 
   lastError = currError;
-  currError = I2CData.midError;
+  currError = I2CData.midError + I2CData.nearError;
   dError = (currError - lastError) / (currTime - lastTime);
 
-  turnValue = currError * Pfactor + dError * Dfactor;*/
+  Serial.println("dError: " + String(dError) + "\tlastError: " + String(lastError) +
+                 "\tcurrError: " + String(currError) + "\tlastTime: " + String(lastTime) +
+                 "\tcurrTime: " + String(currTime));
 
   // base case, there is a line in front of the robot, ie semi straight road
   if (I2CData.BWratio > GUIData.BWCurveThr) {
@@ -242,5 +244,5 @@ else {
   }
 
   // TODO increase this becuase camera needs 110 ms to finish processing
-  RemoteXY_delay(120);
+  RemoteXY_delay(80);
 }
