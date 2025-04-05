@@ -11,6 +11,7 @@ Motor motorRR = Motor(BIN1, BIN2, PWMB, ROFFSET, STBY);
 int16_t motorSpeed;
 int16_t LLSpeed;
 int16_t RRSpeed;
+int8_t lastTurnDirection = 0; // -1 = left, 1 = right
 
 // I2C setup
 struct {
@@ -22,16 +23,20 @@ struct {
 
 // Memory setup
 struct DataStruct {
-  int16_t bwThreshold; // -32768 .. +32767
-  int16_t BWCurveThr; // -32768 .. +32767, threshold for curve detection
-  int16_t NSpeed; // -32768 .. +32767, speed in curves (N) and on straights (F)
-  int16_t FSpeed; // -32768 .. +32767
-  uint8_t UseCamera;
-  float LROffset; // > 1.0, factor that R motor should be faster then L motor
-  float NNearP; // P values for near and mid areas, near and far away
-  float NMidP;
-  float FNearP;
-  float FMidP;
+
+    // input variables
+    int16_t bwThreshold; // -32768 .. +32767
+    int16_t BWCurveThr; // -32768 .. +32767
+    float LROffset; // > 1.0, factor that R motor should be faster then L motor
+    int16_t NSpeed; // -32768 .. +32767
+    int16_t FSpeed; // -32768 .. +32767
+    int16_t NNearP; // -32768 .. +32767
+    int16_t NMidP; // -32768 .. +32767
+    int16_t FNearP; // -32768 .. +32767
+    int16_t FMidP; // -32768 .. +32767
+    uint8_t UseCamera; // =1 if switch ON and =0 if OFF
+    float NearD; // D values for curves
+    float FarD; // D values for straights
 };
 
 float PFactor = 10000; // To lower GUI values
@@ -143,6 +148,8 @@ void setup() {
       RemoteXY.NMidP = GUIData.NMidP;
       RemoteXY.FNearP = GUIData.FNearP;
       RemoteXY.FMidP = GUIData.FMidP;
+      RemoteXY.NearD = GUIData.NearD;
+      RemoteXY.FarD = GUIData.FarD;
 
       EEPROM2GUI = false;
       break;
@@ -180,6 +187,8 @@ void loop() {
   GUIData.NMidP = RemoteXY.NMidP;
   GUIData.FNearP = RemoteXY.FNearP;
   GUIData.FMidP = RemoteXY.FMidP;
+  GUIData.NearD = RemoteXY.NearD;
+  GUIData.FarD = RemoteXY.FarD;
 
   // Allows to run bot without camera on
   if (RemoteXY.UseCamera){
@@ -205,14 +214,19 @@ void loop() {
   if (I2CData.BWratio > GUIData.BWCurveThr) {
     turnValue = I2CData.nearError * GUIData.FNearP/PFactor + 
                 I2CData.midError * GUIData.FMidP/PFactor;
-    turnValue = turnValue + dError * Dfactor;
+    turnValue = turnValue + dError * GUIData.FarD;
     motorSpeed = GUIData.FSpeed;
 
-  // no line, we're at a curve
-  } else {
+  // we see little black ahead, we're at a curve
+  } else if (I2CData.BWratio < GUIData.BWCurveThr &&
+             I2CData.BWratio > GUIData.BWCurveThr/10) {
     turnValue = I2CData.nearError * GUIData.NNearP/PFactor + 
                 I2CData.midError * GUIData.NMidP/PFactor;
-    turnValue = turnValue + dError * Dfactor;
+    turnValue = turnValue + dError * GUIData.NearD;
+    motorSpeed = GUIData.NSpeed;
+  // we see nothing, we're off track, keep turning in the last direction
+  } else if (I2CData.BWratio < GUIData.BWCurveThr/10) {
+    turnValue = -lastTurnDirection * 30;
     motorSpeed = GUIData.NSpeed;
   }
 
@@ -237,6 +251,12 @@ else {
 
     motorLL.drive(LLSpeed);
     motorRR.drive(RRSpeed);
+
+    if (turnValue > 0) {
+      lastTurnDirection = 1; // right
+    } else {
+      lastTurnDirection = -1; // left
+    }
 
   } else {
 
