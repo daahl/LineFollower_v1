@@ -42,7 +42,7 @@ DataStruct GUIData;
 bool EEPROM2GUI = true;
 
 // Control setup
-float Dfactor = 0; // not implmented yet
+float Dfactor = 0.1; // not implmented yet
 float currError = 0;
 float lastError = 0;
 float dError = 0;
@@ -197,20 +197,22 @@ void loop() {
   currError = I2CData.midError + I2CData.nearError;
   dError = (currError - lastError) / (currTime - lastTime);
 
-  Serial.println("dError: " + String(dError) + "\tlastError: " + String(lastError) +
+  /*Serial.println("dError: " + String(dError) + "\tlastError: " + String(lastError) +
                  "\tcurrError: " + String(currError) + "\tlastTime: " + String(lastTime) +
-                 "\tcurrTime: " + String(currTime));
+                 "\tcurrTime: " + String(currTime));*/
 
   // base case, there is a line in front of the robot, ie semi straight road
   if (I2CData.BWratio > GUIData.BWCurveThr) {
     turnValue = I2CData.nearError * GUIData.FNearP/PFactor + 
                 I2CData.midError * GUIData.FMidP/PFactor;
+    turnValue = turnValue + dError * Dfactor;
     motorSpeed = GUIData.FSpeed;
 
   // no line, we're at a curve
   } else {
     turnValue = I2CData.nearError * GUIData.NNearP/PFactor + 
                 I2CData.midError * GUIData.NMidP/PFactor;
+    turnValue = turnValue + dError * Dfactor;
     motorSpeed = GUIData.NSpeed;
   }
 
