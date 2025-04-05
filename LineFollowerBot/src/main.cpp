@@ -11,7 +11,7 @@ Motor motorRR = Motor(BIN1, BIN2, PWMB, ROFFSET, STBY);
 int16_t motorSpeed;
 int16_t LLSpeed;
 int16_t RRSpeed;
-int8_t lastTurnDirection = 0; // -1 = left, 1 = right
+int8_t lastTurnDirection[10] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0}; // -1 = left, 1 = right
 
 // I2C setup
 struct {
@@ -116,6 +116,32 @@ void blinkLEDS() {
   Serial.println("Blinking LEDs done");
 }
 
+void updateLastTurnDirection(int8_t newDirection) {
+  // Shift all elements to the left
+  for (int i = 0; i < 9; i++) {
+      lastTurnDirection[i] = lastTurnDirection[i + 1];
+  }
+  // Add the new direction to the end of the array
+  lastTurnDirection[4] = newDirection;
+}
+
+int8_t getLastTurnDirection() {
+  int8_t sum = 0;
+
+  // Sum all the values in the lastTurnDirection array
+  for (int i = 0; i < 10; i++) {
+      sum += lastTurnDirection[i];
+  }
+
+  if (sum > 0) {
+    return 1; // right
+  } else if (sum < 0) {
+    return -1; // left
+  } else {
+    return 0; // straight
+  }
+}
+
 void setup() {
 
   RemoteXY_Init(); 
@@ -164,6 +190,8 @@ void setup() {
 }
 
 void loop() {
+
+  loopStart:
 
   RemoteXY_Handler();
 
@@ -226,8 +254,21 @@ void loop() {
     motorSpeed = GUIData.NSpeed;
   // we see nothing, we're off track, keep turning in the last direction
   } else if (I2CData.BWratio < GUIData.BWCurveThr/10) {
-    turnValue = -lastTurnDirection * 30;
-    motorSpeed = GUIData.NSpeed;
+
+    if (RemoteXY.MotorState) {
+
+      LLSpeed = GUIData.NSpeed * GUIData.LROffset * getLastTurnDirection();
+      RRSpeed = GUIData.NSpeed * -getLastTurnDirection();
+
+      LLSpeed = (int)constrain(LLSpeed, -255, 255);
+      RRSpeed = (int)constrain(RRSpeed, -255, 255);
+
+      motorLL.drive(LLSpeed);
+      motorRR.drive(RRSpeed);
+
+      RemoteXY_delay(100);
+      goto loopStart;
+    }
   }
 
 }
@@ -253,9 +294,9 @@ else {
     motorRR.drive(RRSpeed);
 
     if (turnValue > 0) {
-      lastTurnDirection = 1; // right
+      updateLastTurnDirection(1); // right
     } else {
-      lastTurnDirection = -1; // left
+      updateLastTurnDirection(-1); // left
     }
 
   } else {
