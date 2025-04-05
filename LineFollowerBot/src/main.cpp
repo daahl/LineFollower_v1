@@ -11,7 +11,7 @@ Motor motorRR = Motor(BIN1, BIN2, PWMB, ROFFSET, STBY);
 int16_t motorSpeed;
 int16_t LLSpeed;
 int16_t RRSpeed;
-int8_t lastTurnDirection[10] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0}; // -1 = left, 1 = right
+int8_t lastTurnDirection[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0}; // -1 = left, 1 = right
 
 // I2C setup
 struct {
@@ -53,7 +53,8 @@ float lastError = 0;
 float dError = 0;
 float lastTime = 0;
 float currTime = 0;
-float turnValue = 0;
+float newTurnValue = 0;
+float turnValue[3] = {0 , 0 , 0};
 
 // Write GUI settings to I2C
 void writeI2C() {
@@ -117,19 +118,17 @@ void blinkLEDS() {
 }
 
 void updateLastTurnDirection(int8_t newDirection) {
-  // Shift all elements to the left
-  for (int i = 0; i < 9; i++) {
+  for (int i = 0; i < 8; i++) {
       lastTurnDirection[i] = lastTurnDirection[i + 1];
   }
-  // Add the new direction to the end of the array
-  lastTurnDirection[4] = newDirection;
+  lastTurnDirection[8] = newDirection;
 }
 
 int8_t getLastTurnDirection() {
   int8_t sum = 0;
 
   // Sum all the values in the lastTurnDirection array
-  for (int i = 0; i < 10; i++) {
+  for (int i = 0; i <= 8; i++) {
       sum += lastTurnDirection[i];
   }
 
@@ -140,6 +139,27 @@ int8_t getLastTurnDirection() {
   } else {
     return 0; // straight
   }
+}
+
+void updateTurnValue(float newValue) {
+  // Shift all elements to the left
+  for (int i = 0; i < 2; i++) {
+      turnValue[i] = turnValue[i + 1];
+  }
+  // Add the new direction to the end of the array
+  turnValue[2] = newValue;
+}
+
+float getTurnValue() {
+  float sum = 0;
+
+  // Sum all the values in the lastTurnDirection array
+  for (int i = 0; i < 3; i++) {
+      sum += turnValue[i];
+  }
+
+  //return sum / 3;
+  return turnValue[2]; // test, only use the last value
 }
 
 void setup() {
@@ -240,33 +260,35 @@ void loop() {
 
   // base case, there is a line in front of the robot, ie semi straight road
   if (I2CData.BWratio > GUIData.BWCurveThr) {
-    turnValue = I2CData.nearError * GUIData.FNearP/PFactor + 
+    newTurnValue = I2CData.nearError * GUIData.FNearP/PFactor + 
                 I2CData.midError * GUIData.FMidP/PFactor;
-    turnValue = turnValue + dError * GUIData.FarD;
+    newTurnValue = newTurnValue + dError * GUIData.FarD;
+    updateTurnValue(newTurnValue);
     motorSpeed = GUIData.FSpeed;
 
   // we see little black ahead, we're at a curve
   } else if (I2CData.BWratio < GUIData.BWCurveThr &&
-             I2CData.BWratio > GUIData.BWCurveThr/10) {
-    turnValue = I2CData.nearError * GUIData.NNearP/PFactor + 
+             I2CData.BWratio > GUIData.BWCurveThr/8) {
+    newTurnValue = I2CData.nearError * GUIData.NNearP/PFactor + 
                 I2CData.midError * GUIData.NMidP/PFactor;
-    turnValue = turnValue + dError * GUIData.NearD;
+    newTurnValue = newTurnValue + dError * GUIData.NearD;
+    updateTurnValue(newTurnValue);
     motorSpeed = GUIData.NSpeed;
   // we see nothing, we're off track, keep turning in the last direction
-  } else if (I2CData.BWratio < GUIData.BWCurveThr/10) {
+  } else if (I2CData.BWratio < GUIData.BWCurveThr/8) {
 
     if (RemoteXY.MotorState) {
 
-      LLSpeed = GUIData.NSpeed * GUIData.LROffset * getLastTurnDirection();
-      RRSpeed = GUIData.NSpeed * -getLastTurnDirection();
+      LLSpeed = GUIData.FSpeed * GUIData.LROffset;
+      RRSpeed = GUIData.FSpeed;
 
       LLSpeed = (int)constrain(LLSpeed, -255, 255);
       RRSpeed = (int)constrain(RRSpeed, -255, 255);
 
-      motorLL.drive(LLSpeed);
-      motorRR.drive(RRSpeed);
+      motorLL.drive(-LLSpeed);
+      motorRR.drive(-RRSpeed);
 
-      RemoteXY_delay(100);
+      RemoteXY_delay(20);
       goto loopStart;
     }
   }
@@ -275,7 +297,10 @@ void loop() {
 else {
 
   // no camera, use default values
-  turnValue = 0;
+  updateTurnValue(0);
+  updateTurnValue(0);
+  updateTurnValue(0);
+
   motorSpeed = GUIData.FSpeed;
 
 }
@@ -284,8 +309,8 @@ else {
   // TODO try to make it such that turnValue only increases speed, never decreases
   if (RemoteXY.MotorState) {
 
-    LLSpeed = (motorSpeed + (int)turnValue)*GUIData.LROffset;
-    RRSpeed = motorSpeed - (int)turnValue;
+    LLSpeed = (motorSpeed + (int)getTurnValue())*GUIData.LROffset;
+    RRSpeed = motorSpeed - (int)getTurnValue();
 
     LLSpeed = (int)constrain(LLSpeed, -255, 255);
     RRSpeed = (int)constrain(RRSpeed, -255, 255);
@@ -293,7 +318,7 @@ else {
     motorLL.drive(LLSpeed);
     motorRR.drive(RRSpeed);
 
-    if (turnValue > 0) {
+    if (getTurnValue() > 0) {
       updateLastTurnDirection(1); // right
     } else {
       updateLastTurnDirection(-1); // left
@@ -305,6 +330,8 @@ else {
     motorRR.brake();
 
   }
+
+  Serial.println(getTurnValue());
 
   // TODO increase this becuase camera needs 110 ms to finish processing
   RemoteXY_delay(80);
