@@ -11,7 +11,11 @@ Motor motorRR = Motor(BIN1, BIN2, PWMB, ROFFSET, STBY);
 int16_t motorSpeed;
 int16_t LLSpeed;
 int16_t RRSpeed;
-int8_t lastTurnDirection[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0}; // -1 = left, 1 = right
+int8_t lastTurnDirection[13] = {0, 0, 0, 0, 0, 
+                                0, 0, 0, 0, 0, 
+                                0, 0, 0}; // -1 = left, 1 = right
+int8_t lastLastTurnDirection = 0; // -1 = left, 1 = right
+bool foundLine = false;
 
 // I2C setup
 struct {
@@ -118,17 +122,17 @@ void blinkLEDS() {
 }
 
 void updateLastTurnDirection(int8_t newDirection) {
-  for (int i = 0; i < 8; i++) {
+  for (int i = 0; i <= 11; i++) {
       lastTurnDirection[i] = lastTurnDirection[i + 1];
   }
-  lastTurnDirection[8] = newDirection;
+  lastTurnDirection[12] = newDirection;
 }
 
 int8_t getLastTurnDirection() {
   int8_t sum = 0;
 
   // Sum all the values in the lastTurnDirection array
-  for (int i = 0; i <= 8; i++) {
+  for (int i = 0; i <= 12; i++) {
       sum += lastTurnDirection[i];
   }
 
@@ -264,6 +268,7 @@ void loop() {
                 I2CData.midError * GUIData.FMidP/PFactor;
     newTurnValue = newTurnValue + dError * GUIData.FarD;
     updateTurnValue(newTurnValue);
+    foundLine = true;
     motorSpeed = GUIData.FSpeed;
 
   // we see little black ahead, we're at a curve
@@ -273,22 +278,28 @@ void loop() {
                 I2CData.midError * GUIData.NMidP/PFactor;
     newTurnValue = newTurnValue + dError * GUIData.NearD;
     updateTurnValue(newTurnValue);
+    foundLine = true;
     motorSpeed = GUIData.NSpeed;
   // we see nothing, we're off track, keep turning in the last direction
   } else if (I2CData.BWratio < GUIData.BWCurveThr/8) {
 
     if (RemoteXY.MotorState) {
 
-      LLSpeed = GUIData.FSpeed * GUIData.LROffset;
-      RRSpeed = GUIData.FSpeed;
+      LLSpeed = GUIData.NSpeed * GUIData.LROffset;
+      RRSpeed = GUIData.NSpeed;
+
+      if (foundLine){
+        LLSpeed = +getLastTurnDirection() * LLSpeed;
+        RRSpeed = -getLastTurnDirection() * RRSpeed;
+      }
 
       LLSpeed = (int)constrain(LLSpeed, -255, 255);
       RRSpeed = (int)constrain(RRSpeed, -255, 255);
 
-      motorLL.drive(-LLSpeed);
-      motorRR.drive(-RRSpeed);
+      motorLL.drive(LLSpeed);
+      motorRR.drive(RRSpeed);
 
-      RemoteXY_delay(20);
+      RemoteXY_delay(80);
       goto loopStart;
     }
   }
