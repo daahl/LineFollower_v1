@@ -12,4 +12,6 @@ The sunglass is used to help against reflections on the tape. The algorithm divi
 - The robot did have some issues with black spots near the line which threw it off-track. I could possibly add two single-pixel line detectors for an inner control loop, and use the camera for an outer planning loop.
 - If I want the robot to get really fast, I would need to optimize the curve taking which would require some sort of mapping and planning algorithms.
 
-<img src="linefollower_v1.png" alt="isolated" width="400"/>
+<img src="linefollower_v1.png" alt="Photo of the robot." width="400"/>
+
+###### Image courtesy of Tomas Överström/cffc.se
